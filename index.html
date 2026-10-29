@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0f">
+<title>WebOS Phone</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; }
+  html,body { height:100%; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; overflow:hidden; background:#1a1a22; }
+
+  #phone { position:relative; width:100vw; height:100vh; overflow:hidden; background:#0a0a0f; color:#fff; }
+  @media (min-width:600px) {
+    body { display:grid; place-items:center; }
+    #phone { width:390px; height:844px; border-radius:48px; box-shadow:0 0 0 12px #000, 0 30px 80px #0008; }
+  }
+
+  #wallpaper { position:absolute; inset:0; background:linear-gradient(160deg,#1a0033,#003344 50%,#002233); transition:filter .5s, transform .5s; }
+  #wallpaper.blur { filter:blur(20px) brightness(.5); transform:scale(1.1); }
+
+  #statusbar { position:absolute; top:0; left:0; right:0; height:44px; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:0 24px; font-size:13px; font-weight:600; pointer-events:none; }
+  #icons { display:flex; gap:6px; align-items:center; }
+  .bar { width:16px; height:11px; border:1.5px solid #fff; border-radius:3px; position:relative; }
+  .bar::after { content:''; position:absolute; inset:1.5px; right:5px; background:#fff; border-radius:1px; }
+
+  #lockscreen { position:absolute; inset:0; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:opacity .4s, transform .4s; }
+  #lockscreen.hidden { opacity:0; transform:translateY(-100%); pointer-events:none; }
+  #lock-time { font-size:76px; font-weight:200; letter-spacing:-2px; }
+  #lock-date { font-size:16px; opacity:.8; margin-top:-6px; }
+
+  #slider { position:absolute; bottom:60px; left:30px; right:30px; height:60px; background:#ffffff1a; border-radius:30px; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(10px); overflow:hidden; }
+  #slider-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,#4da3ff55,#4da3ffaa); border-radius:30px 0 0 30px; pointer-events:none; }
+  #slider-handle { position:absolute; left:5px; top:5px; width:50px; height:50px; border-radius:50%; background:#fff; color:#000; display:grid; place-items:center; font-size:22px; cursor:grab; touch-action:none; transition:left .25s cubic-bezier(.32,.72,0,1); box-shadow:0 2px 10px #0006; z-index:2; }
+  #slider-handle.dragging { transition:none; cursor:grabbing; }
+  #slider-label { font-size:14px; opacity:.7; pointer-events:none; z-index:1; }
+
+  /* ==================== HOME & APP EDITING ==================== */
+  #home { position:absolute; inset:0; padding:70px 22px 110px; display:grid; grid-template-columns:repeat(4,1fr); gap:22px 14px; align-content:start; transition:opacity .4s; overflow-y:auto; }
+  #home.hidden { opacity:0; pointer-events:none; }
+  
+  .app, .widget { display:flex; flex-direction:column; align-items:center; gap:6px; cursor:pointer; transition:transform .15s; position:relative; touch-action:none; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+  .app:active { transform:scale(.88); }
+  .app.dragging, .widget.dragging { opacity:0.3; transform:scale(1.05); z-index: 10; }
+  .app-icon { width:58px; height:58px; border-radius:14px; display:grid; place-items:center; font-size:28px; box-shadow:0 4px 14px #0006; pointer-events:none; }
+  .app-name { font-size:11px; opacity:.95; text-shadow:0 1px 3px #0008; text-align:center; pointer-events:none; }
+
+  /* Widgets */
+  .widget { grid-column: span 2; background:#ffffff1a; backdrop-filter:blur(20px); border-radius:20px; padding:16px; }
+  .widget-time { font-size:36px; font-weight:300; letter-spacing:-1px; }
+  .widget-date { font-size:12px; opacity:.8; margin-top:-2px; }
+  .widget-weather { display:flex; align-items:center; gap:10px; margin-top:12px; font-size:13px; }
+  .widget-icon { font-size:24px; }
+
+  /* Jiggle Animation */
+  @keyframes jiggle {
+    0% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
+    100% { transform: rotate(-2deg); }
+  }
+  #home.edit-mode .app:not(.dragging), #home.edit-mode .widget:not(.dragging) { animation: jiggle 0.25s infinite; }
+  
+  /* Delete Button */
+  .del-badge { display:none; position:absolute; top:-6px; left:-6px; width:24px; height:24px; background:#ff375f; color:#fff; border-radius:50%; font-size:14px; font-weight:bold; line-height:24px; text-align:center; box-shadow:0 2px 6px #0008; z-index:20; cursor:pointer; pointer-events:auto; }
+  #home.edit-mode .del-badge { display:block; }
+  #home.edit-mode .app, #home.edit-mode .widget { cursor:grab; }
+  #home.edit-mode .app:active, #home.edit-mode .widget:active { transform:scale(1); }
+
+  #appview { position:absolute; inset:0; z-index:80; background:#111; display:flex; flex-direction:column; transform:translateY(100%); opacity:0; transition:transform .35s cubic-bezier(.32,.72,0,1), opacity .25s; }
+  #appview.open { transform:translateY(0); opacity:1; }
+  #appview header { height:60px; padding:44px 16px 0; display:flex; align-items:center; gap:12px; background:#1c1c22; font-weight:600; flex-shrink:0; border-bottom:1px solid #ffffff0a; }
+  #appview header button { background:none; border:none; color:#4da3ff; font-size:16px; cursor:pointer; padding:8px; display:flex; align-items:center; }
+  #app-content { flex:1; padding:20px; overflow-y:auto; color:#ddd; font-size:15px; line-height:1.6; position:relative; }
+  #app-content h2 { margin-bottom:12px; color:#fff; }
+  #app-content::-webkit-scrollbar { width:0; }
+
+  .switch { position:relative; display:inline-block; width:50px; height:30px; }
+  .switch input { opacity:0; width:0; height:0; }
+  .slider-sw { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#333; transition:.3s; border-radius:30px; }
+  .slider-sw:before { position:absolute; content:""; height:26px; width:26px; left:2px; bottom:2px; background:#fff; transition:.3s; border-radius:50%; }
+  input:checked + .slider-sw { background:#34c759; }
+  input:checked + .slider-sw:before { transform:translateX(20px); }
+
+  .btn { display:block; padding:12px 24px; border:none; border-radius:30px; color:#fff; font-size:15px; cursor:pointer; font-weight:600; text-align:center; transition:opacity .2s; }
+  .btn:active { opacity:.7; }
+
+  #dock { position:absolute; bottom:20px; left:20px; right:20px; height:76px; background:#ffffff14; backdrop-filter:blur(20px); border-radius:26px; display:flex; justify-content:space-around; align-items:center; padding:0 8px; transition:opacity .4s, transform .4s; z-index:40; }
+  #dock.hidden { opacity:0; transform:translateY(120%); pointer-events:none; }
+  #dock .app-icon { width:52px; height:52px; border-radius:13px; font-size:26px; }
+
+  #indicator { position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:160px; height:44px; z-index:9999; cursor:grab; display:flex; align-items:flex-end; justify-content:center; padding-bottom:8px; touch-action:none; }
+  #indicator::after { content:''; display:block; width:130px; height:5px; border-radius:3px; background:#fff9; transition:background .2s; }
+  #indicator:active::after { background:#fff; }
+
+  /* File Manager Styles */
+  .file-row { display:flex; align-items:center; padding:12px; border-bottom:1px solid #ffffff0a; cursor:pointer; transition:background 0.2s; }
+  .file-row:active { background:#ffffff14; }
+  .file-icon { font-size:24px; margin-right:12px; }
+  .file-info { flex:1; overflow:hidden; }
+  .file-name { font-size:15px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .file-size { font-size:12px; opacity:0.6; }
+  .del-btn { background:#ff375f22; color:#ff375f; border:none; padding:6px 10px; border-radius:8px; font-size:12px; cursor:pointer; }
+
+  /* Keyboard Styles */
+  #kb { position:absolute; left:0; right:0; bottom:0; z-index:340; height:286px; padding:8px 4px 44px; background:#1c1c22f2; backdrop-filter:blur(20px); border-top:1px solid #ffffff14; display:flex; flex-direction:column; gap:8px; transform:translateY(105%); transition:transform .25s cubic-bezier(.32,.72,0,1); }
+  #kb.show { transform:translateY(0); }
+  .kb-row { flex:1; display:flex; gap:5px; min-height:0; }
+  .k { flex:1; min-width:0; border:none; border-radius:7px; background:#4a4a54; color:#fff; font-size:20px; font-family:inherit; cursor:pointer; padding:0; box-shadow:0 1px 0 #0008; display:grid; place-items:center; }
+  .k:active { background:#6a6a76; }
+  .k.sp { background:#2e2e36; font-size:15px; } .k.sp:active { background:#4a4a54; }
+  .k.sp.on { background:#fff; color:#000; } .k.go { background:#0a84ff; }
+  .kb-emo { flex:1; display:grid; grid-template-columns:repeat(8,1fr); gap:2px; overflow-y:auto; align-content:start; touch-action:pan-y; }
+  .kb-emo .k { background:none; box-shadow:none; font-size:24px; height:42px; }
+
+  /* Passcode UI */
+  #passui { position:absolute; inset:0; z-index:350; display:none; flex-direction:column; align-items:center; justify-content:center; background:#0a0a0fee; backdrop-filter:blur(24px); }
+  #passui.show { display:flex; }
+  #pass-title { font-size:20px; font-weight:600; } #pass-sub { font-size:13px; opacity:.7; margin-top:6px; min-height:18px; text-align:center; padding:0 30px; }
+  #pass-dots { display:flex; gap:16px; margin:26px 0 34px; }
+  #pass-dots i { width:14px; height:14px; border-radius:50%; border:1.5px solid #fff; transition:background .1s; }
+  #pass-dots i.on { background:#fff; }
+  #pass-dots.shake { animation:shake .4s; }
+  @keyframes shake { 20%,60% { transform:translateX(-10px); } 40%,80% { transform:translateX(10px); } }
+  #pass-pad { display:grid; grid-template-columns:repeat(3,72px); gap:16px 22px; }
+  #pass-pad button { width:72px; height:72px; border-radius:50%; border:none; background:#ffffff1f; color:#fff; font-size:28px; font-weight:300; cursor:pointer; }
+  #pass-pad button:active { background:#ffffff55; }
+</style>
+</head>
+<body>
+<div id="phone">
+  <div id="wallpaper" class="blur"></div>
+
+  <div id="statusbar">
+    <span id="clock">9:41</span>
+    <div id="icons"><div class="bar"></div><span style="font-size:11px">5G</span></div>
+  </div>
+
+  <div id="lockscreen">
+    <div id="lock-time">9:41</div>
+    <div id="lock-date">Tuesday, October 29</div>
+    <div id="slider">
+      <div id="slider-fill"></div>
+      <div id="slider-handle">➜</div>
+      <span id="slider-label">Slide to unlock</span>
+    </div>
+  </div>
+
+  <div id="home" class="hidden"></div>
+
+  <div id="appview">
+    <header><button id="back">‹ Home</button><span id="app-title"></span></header>
+    <div id="app-content"></div>
+  </div>
+
+  <div id="dock" class="hidden"></div>
+  <div id="kb"></div>
+  <div id="passui">
+    <div id="pass-title"></div><div id="pass-sub"></div>
+    <div id="pass-dots"></div>
+    <div id="pass-pad"></div>
+  </div>
+  <div id="indicator"></div>
+</div>
+
+<script>
+/* ==================== AUDIO ENGINE ==================== */
+const AudioEngine = (() => {
+  let ctx;
+  const init = () => { 
+    try {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); 
+      if (ctx.state === 'suspended') ctx.resume(); 
+    } catch(e) {}
+  };
+  const play = (freq, type, duration, volume = 0.1) => {
+    if (typeof DevOpts !== 'undefined' && DevOpts.muted()) return;
+    if (!ctx || ctx.state !== 'running') return;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(volume, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch(e) {}
+  };
+  return {
+    init,
+    click: () => play(800, 'sine', 0.05, 0.05),
+    pop: () => { play(600, 'sine', 0.1, 0.1); setTimeout(() => play(800, 'sine', 0.1, 0.1), 50); },
+    swoosh: () => play(200, 'triangle', 0.3, 0.1),
+    error: () => play(150, 'sawtooth', 0.3, 0.1),
+    success: () => { play(400, 'sine', 0.1, 0.1); setTimeout(() => play(600, 'sine', 0.1, 0.1), 100); setTimeout(() => play(800, 'sine', 0.2, 0.1), 200); }
+  };
+})();
+document.addEventListener('pointerdown', () => AudioEngine.init());
+
+/* ==================== PASSCODE SYSTEM ==================== */
+const Pass = {
+  get: () => { try { return JSON.parse(localStorage.getItem('webos-pass')); } catch { return null; } },
+  has: () => !!Pass.get(),
+  set: (code) => { const salt = Math.random().toString(36).slice(2); localStorage.setItem('webos-pass', JSON.stringify({ salt, hash: btoa(salt + ':' + code) })); },
+  verify: (code) => { const p = Pass.get(); return p && btoa(p.salt + ':' + code) === p.hash; },
+  clear: () => localStorage.removeItem('webos-pass')
+};
+
+const PassUI = (() => {
+  const $ = id => document.getElementById(id);
+  let res = null, buf = '';
+  const dots = () => $('pass-dots').innerHTML = Array.from({ length: 4 }, (_, i) => `<i class="${i < buf.length ? 'on' : ''}"></i>`).join('');
+  const finish = v => { const r = res; res = null; if (r) r(v); };
+  function press(d) {
+    if (!res || buf.length >= 4) return;
+    buf += d; dots(); navigator.vibrate?.(5); AudioEngine.click();
+    if (buf.length === 4) { const c = buf; setTimeout(() => { buf = ''; dots(); finish(c); }, 120); }
+  }
+  const back = () => { buf = buf.slice(0, -1); dots(); AudioEngine.click(); };
+  $('pass-pad').innerHTML = [1,2,3,4,5,6,7,8,9].map(n => `<button data-k="${n}">${n}</button>`).join('') + '<button data-k="x" style="font-size:15px;">Cancel</button><button data-k="0">0</button><button data-k="b">⌫</button>';
+  $('pass-pad').onclick = e => { const k = e.target.dataset.k; if (!k) return; if (k === 'x') finish(null); else if (k === 'b') back(); else press(k); };
+  return {
+    ask({ title, sub = '', cancel = true }) {
+      finish(null); buf = '';
+      $('pass-title').textContent = title; $('pass-sub').textContent = sub; $('pass-pad').querySelector('[data-k="x"]').style.visibility = cancel ? 'visible' : 'hidden';
+      dots(); $('passui').classList.add('show');
+      return new Promise(r => res = r);
+    },
+    close() { finish(null); $('passui').classList.remove('show'); },
+    shake() { const d = $('pass-dots'); d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake'); navigator.vibrate?.([40, 40, 40]); AudioEngine.error(); }
+  };
+})();
+
+async function checkPass(title = 'Enter Passcode') {
+  let sub = '';
+  while (true) {
+    const p = PassUI.ask({ title, sub });
+    if (sub) PassUI.shake();
+    const code = await p;
+    if (code == null) { PassUI.close(); return false; }
+    if (Pass.verify(code)) { AudioEngine.success(); PassUI.close(); return true; }
+    sub = 'Wrong passcode';
+  }
+}
+
+async function newPass() {
+  let sub = `Choose a 4-digit passcode`;
+  while (true) {
+    const a = await PassUI.ask({ title: 'New Passcode', sub });
+    if (a == null) { PassUI.close(); return false; }
+    const b = await PassUI.ask({ title: 'Confirm Passcode', sub: 'Enter it again' });
+    if (b == null) { PassUI.close(); return false; }
+    if (a === b) { Pass.set(a); PassUI.close(); alert('Passcode saved'); return true; }
+    sub = 'Passcodes didn’t match. Try again';
+  }
+}
+
+/* ==================== KEYBOARD ==================== */
+const Keyboard = (() => {
+  const $ = id => document.getElementById(id);
+  const kb = $('kb'), phone = $('phone');
+  const ELIGIBLE = 'input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]):not([type=button]):not([type=submit]):not([type=color]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled])';
+  const EMOJI = ['😀','😂','😍','😎','😢','😡','👍','👎','🙏','👏','🔥','❤️','🎉','✨','💯','🤔','😅','😊','😉','😘','😴','🤝','👋','🙌','💪','🌟','🎵','📷','✅','❌','⭐','🍕','☕','🚀','🌈','🐶','🐱','🎮','📞','💬'];
+  const LAYERS = {
+    abc: ['qwertyuiop', 'asdfghjkl', ['shift', ...'zxcvbnm', 'back']],
+    num: ['1234567890', '-/:;()$&@"', ['sym', ...".,?!'", 'back']],
+    sym: ['[]{}#%^*+=', '_\\|~<>€£¥•', ['num', ...".,?!'", 'back']]
+  };
+  let target = null, layer = 'abc', shift = 0, lastShiftTap = 0, rep = null, repT = null;
+
+  const eligible = el => el && el.matches && el.matches(ELIGIBLE) && phone.contains(el);
+  const kind = () => (target && target.type) || 'text';
+
+  function autoCap() {
+    if (shift === 2 || !target || ['password', 'email', 'url', 'number', 'tel'].includes(kind())) return;
+    const s = target.selectionStart, before = s == null ? target.value : target.value.slice(0, s);
+    shift = (before === '' || /[.!?]\s+$/.test(before)) ? 1 : 0;
+  }
+  const fire = (el, type, key) => el.dispatchEvent(new KeyboardEvent(type, { key, code: key, bubbles: true, cancelable: true }));
+  function insert(t) {
+    const el = target; if (!el) return;
+    try { const s = el.selectionStart; if (s == null) throw 0; el.setRangeText(t, s, el.selectionEnd, 'end'); }
+    catch { el.value += t; }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function back() {
+    const el = target; if (!el) return;
+    try {
+      const s = el.selectionStart, e = el.selectionEnd; if (s == null) throw 0;
+      if (s === e) { if (!s) return; const v = el.value; const n = s >= 2 && /[\uDC00-\uDFFF]/.test(v[s - 1]) && /[\uD800-\uDBFF]/.test(v[s - 2]) ? 2 : 1; el.setRangeText('', s - n, e, 'end'); }
+      else el.setRangeText('', s, e, 'end');
+    } catch { el.value = el.value.slice(0, -1); }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function enter() {
+    const el = target; if (!el) return;
+    if (el.tagName === 'TEXTAREA') return insert('\n');
+    fire(el, 'keydown', 'Enter'); fire(el, 'keypress', 'Enter'); fire(el, 'keyup', 'Enter');
+  }
+
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const btn = (label, k, cls = '', flex = 1) => `<button class="k ${cls}" data-k="${esc(k)}" style="flex:${flex}">${esc(label)}</button>`;
+  function render() {
+    if (layer === 'emo') {
+      kb.innerHTML = `<div class="kb-emo">${EMOJI.map(e => `<button class="k" data-k="${e}">${e}</button>`).join('')}</div>
+        <div class="kb-row">${btn('ABC', 'abc', 'sp', 2)}${btn('space', ' ', '', 5)}${btn('⌫', 'back', 'sp', 2)}</div>`;
+      return;
+    }
+    const caps = layer === 'abc' && shift > 0;
+    const rows = LAYERS[layer].map((r, i) => {
+      const keys = [...(Array.isArray(r) ? r : r)].map(ch => {
+        if (ch === 'shift') return btn(shift === 2 ? '⇪' : '⇧', 'shift', 'sp' + (shift ? ' on' : ''), 1.5);
+        if (ch === 'back') return btn('⌫', 'back', 'sp', 1.5);
+        if (ch === 'sym') return btn('#+=', 'sym', 'sp', 1.5);
+        if (ch === 'num') return btn('123', 'num', 'sp', 1.5);
+        return btn(caps ? ch.toUpperCase() : ch, caps ? ch.toUpperCase() : ch);
+      }).join('');
+      return `<div class="kb-row" style="${i === 1 && layer === 'abc' ? 'padding:0 5%;' : ''}">${keys}</div>`;
+    }).join('');
+    const k = kind();
+    const extra = k === 'email' ? btn('@', '@') : k === 'url' ? btn('/', '/') : '';
+    const bottom = layer === 'abc'
+      ? btn('123', 'num', 'sp', 1.5) + btn('😀', 'emo', 'sp', 1.2) + btn('space', ' ', '', 4) + extra + btn('.', '.', '', 1) + btn('↵', 'enter', 'sp go', 1.5)
+      : btn('ABC', 'abc', 'sp', 1.5) + btn('space', ' ', '', 4) + btn('↵', 'enter', 'sp go', 1.5);
+    kb.innerHTML = rows + `<div class="kb-row">${bottom}</div>`;
+  }
+
+  function press(k) {
+    navigator.vibrate?.(4);
+    if (k === 'back') { back(); autoCap(); return render(); }
+    if (k === 'enter') return enter();
+    if (k === 'shift') {
+      const now = Date.now(); shift = shift === 2 ? 0 : (now - lastShiftTap < 350 ? 2 : shift ? 0 : 1); lastShiftTap = now; return render();
+    }
+    if (['abc', 'num', 'sym', 'emo'].includes(k)) { layer = k; return render(); }
+    insert(k);
+    if (layer === 'abc') { if (shift === 1) shift = 0; autoCap(); render(); }
+  }
+  function stopRepeat() { clearTimeout(repT); clearInterval(rep); rep = repT = null; }
+  
+  kb.addEventListener('pointerdown', e => {
+    const b = e.target.closest('.k');
+    if (!b) return;
+    e.preventDefault();
+    const k = b.dataset.k; press(k); AudioEngine.click();
+    if (k === 'back') { stopRepeat(); repT = setTimeout(() => { rep = setInterval(() => { back(); }, 55); }, 380); }
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => kb.addEventListener(ev, stopRepeat));
+
+  function show(el) {
+    target = el;
+    layer = ['number', 'tel'].includes(el.type) ? 'num' : 'abc';
+    shift = 0; autoCap(); render();
+    kb.classList.add('show'); phone.classList.add('kb-open');
+    const av = document.getElementById('appview');
+    if (av) av.style.bottom = kb.offsetHeight + 'px';
+    setTimeout(() => { 
+      if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' }); 
+      const log = document.getElementById('chat-log'); 
+      if (log) log.scrollTop = log.scrollHeight; 
+    }, 60);
+  }
+  function hide() {
+    stopRepeat(); target = null;
+    kb.classList.remove('show'); phone.classList.remove('kb-open');
+    const av = document.getElementById('appview');
+    if (av) av.style.bottom = '';
+  }
+
+  document.addEventListener('pointerdown', e => { const el = e.target; if (eligible(el)) el.setAttribute('inputmode', 'none'); }, true);
+  document.addEventListener('focusin', e => { const el = e.target; if (!eligible(el)) return; el.setAttribute('inputmode', 'none'); show(el); });
+  document.addEventListener('focusout', () => setTimeout(() => { const a = document.activeElement; if (!eligible(a) && kb.classList.contains('show')) { hide(); } }, 0));
+  return { hide, show };
+})();
+
+/* ==================== APPS ==================== */
+let APPS = [
+  {
+    id:'maker', name:'Maker', icon:'🛠️', color:'#ff9500',
+    fullscreen: true,
+    body: () => `
+      <div style="display:flex;flex-direction:column;height:100%;background:#1c1c22;">
+        <div style="display:flex;background:#111;border-bottom:1px solid #333;">
+          <button class="maker-tab on" data-t="html" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid #ff9500;color:#fff;font-weight:bold;cursor:pointer;">HTML</button>
+          <button class="maker-tab" data-t="css" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid transparent;color:#888;font-weight:bold;cursor:pointer;">CSS</button>
+          <button class="maker-tab" data-t="js" style="flex:1;padding:10px;background:none;border:none;border-bottom:2px solid transparent;color:#888;font-weight:bold;cursor:pointer;">JS</button>
+        </div>
+        <div style="flex:1;position:relative;display:flex;flex-direction:column;">
+          <textarea id="editor-html" placeholder="<h1>Hello World</h1>" style="flex:1;width:100%;padding:16px;background:#1e1e24;color:#fff;font-family:monospace;font-size:14px;border:none;outline:none;resize:none;display:block;"></textarea>
+          <textarea id="editor-css" placeholder="body { color: white; }" style="flex:1;width:100%;padding:16px;background:#1e1e24;color:#fff;font-family:monospace;font-size:14px;border:none;outline:none;resize:none;display:none;"></textarea>
+          <textarea id="editor-js" placeholder="console.log('Hello');" style="flex:1;width:100%;padding:16px;background:#1e1e24;color:#fff;font-family:monospace;font-size:14px;border:none;outline:none;resize:none;display:none;"></textarea>
+          <div style="padding:10px;background:#111;display:flex;gap:8px;border-top:1px solid #333;">
+            <button id="maker-run" class="btn" style="flex:1;background:#ff9500;">▶ Run</button>
+            <button id="maker-save" class="btn" style="flex:1;background:#333;">💾 Save</button>
+          </div>
+        </div>
+        <div id="maker-preview" style="display:none;position:absolute;inset:0;background:#fff;z-index:10;flex-direction:column;">
+          <div style="background:#1c1c22;padding:10px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="color:#fff;font-size:14px;font-weight:bold;">Preview</span>
+            <button id="maker-close" style="background:#ff375f;color:#fff;border:none;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;">Close</button>
+          </div>
+          <iframe id="maker-frame" style="flex:1;width:100%;border:none;background:#fff;"></iframe>
+        </div>
+      </div>
+    `,
+    init: () => {
+      const $ = id => document.getElementById(id);
+      const htmlEd = $('editor-html'), cssEd = $('editor-css'), jsEd = $('editor-js');
+      const preview = $('maker-preview'), frame = $('maker-frame');
+      const saved = JSON.parse(localStorage.getItem('webos-maker') || '{"html":"<h1>Hello WebOS!</h1>","css":"body { background: #111; color: #fff; font-family: sans-serif; text-align: center; padding-top: 50px; }","js":"console.log(\'Ready\');"}');
+      htmlEd.value = saved.html; cssEd.value = saved.css; jsEd.value = saved.js;
+      document.querySelectorAll('.maker-tab').forEach(tab => {
+        tab.onclick = () => {
+          document.querySelectorAll('.maker-tab').forEach(t => { t.style.borderBottomColor = 'transparent'; t.style.color = '#888'; });
+          tab.style.borderBottomColor = '#ff9500'; tab.style.color = '#fff';
+          htmlEd.style.display = 'none'; cssEd.style.display = 'none'; jsEd.style.display = 'none';
+          $('editor-' + tab.dataset.t).style.display = 'block';
+          $('editor-' + tab.dataset.t).focus();
+        };
+      });
+      $('maker-run').onclick = () => {
+        const doc = frame.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><style>${cssEd.value}</style></head><body>${htmlEd.value}<script>${jsEd.value}<\/script></body></html>`);
+        doc.close();
+        preview.style.display = 'flex';
+        navigator.vibrate?.(10); AudioEngine.pop();
+      };
+      $('maker-save').onclick = () => {
+        localStorage.setItem('webos-maker', JSON.stringify({ html: htmlEd.value, css: cssEd.value, js: jsEd.value }));
+        alert('Project saved to WebOS storage!');
+        navigator.vibrate?.(15); AudioEngine.success();
+      };
+      $('maker-close').onclick = () => { preview.style.display = 'none'; frame.src = 'about:blank'; };
+    }
+  },
+  {
+    id:'files', name:'Files', icon:'📁', color:'#34c759',
+    body: () => `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h2 style="margin:0;">My Files</h2>
+        <div style="display:flex;gap:8px;">
+          <button id="file-new-btn" class="btn" style="background:#ff9500;padding:6px 12px;font-size:13px;width:auto;">+ File</button>
+          <button id="file-upload-btn" class="btn" style="background:#0a84ff;padding:6px 12px;font-size:13px;width:auto;">Upload</button>
+        </div>
+      </div>
+      <input type="file" id="file-upload-input" style="display:none;">
+      <div id="file-list" style="background:#1c1c22;border-radius:12px;overflow:hidden; min-height:100px;">
+        <div style="padding:20px;text-align:center;opacity:0.6;">Loading...</div>
+      </div>
+    `,
+    init: () => {
+      const DB_NAME = 'WebOS_Storage';
+      const list = document.getElementById('file-list');
+      const uploadBtn = document.getElementById('file-upload-btn');
+      const uploadInput = document.getElementById('file-upload-input');
+      const newBtn = document.getElementById('file-new-btn');
+      const contentEl = document.getElementById('app-content');
+      let db;
+
+      const formatSize = (bytes) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      };
+      const getIcon = (type, name) => {
+        if (type.startsWith('image/')) return '🖼️';
+        if (type.startsWith('video/')) return '🎬';
+        if (type.startsWith('audio/')) return '🎵';
+        if (type.startsWith('text/') || name.endsWith('.json') || name.endsWith('.js') || name.endsWith('.html')) return '📄';
+        return '📦';
+      };
+      const openDB = () => new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = e => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id', autoIncrement: true });
+        };
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror = e => reject(e.target.error);
+      });
+
+      const showFileViewer = (html) => {
+        contentEl.innerHTML = html + `<button id="file-viewer-back" class="btn" style="background:#555;margin:20px auto;">Back</button>`;
+        document.getElementById('file-viewer-back').onclick = () => openApp(APPS.find(a => a.id === 'files'));
+      };
+
+      const renderFiles = async () => {
+        if (!db) db = await openDB();
+        const tx = db.transaction('files', 'readonly');
+        const req = tx.objectStore('files').getAll();
+        req.onsuccess = () => {
+          const files = req.result;
+          list.innerHTML = '';
+          if (files.length === 0) {
+            list.innerHTML = '<div style="padding:20px;text-align:center;opacity:0.6;">No files saved yet.<br>Upload a file or create one.</div>';
+            return;
+          }
+          files.sort((a,b) => b.ts - a.ts).forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'file-row';
+            row.innerHTML = `
+              <div class="file-icon">${getIcon(f.type, f.name)}</div>
+              <div class="file-info">
+                <div class="file-name">${f.name}</div>
+                <div class="file-size">${formatSize(f.size)}</div>
+              </div>
+              <button class="del-btn" data-id="${f.id}">Delete</button>
+            `;
+            row.onclick = (e) => {
+              if (e.target.classList.contains('del-btn')) return;
+              const url = URL.createObjectURL(f.blob);
+              if (f.type.startsWith('image/')) {
+                showFileViewer(`<div style="text-align:center;"><img src="${url}" style="max-width:100%;border-radius:12px;"></div>`);
+              } else if (f.type.startsWith('text/') || f.name.endsWith('.json') || f.name.endsWith('.js') || f.name.endsWith('.html')) {
+                f.blob.text().then(text => {
+                  showFileViewer(`<h2>${f.name}</h2><pre style="background:#1c1c22;padding:16px;border-radius:12px;overflow-x:auto;white-space:pre-wrap; font-family:monospace;">${text.replace(/</g, '&lt;')}</pre>`);
+                });
+              } else {
+                const a = document.createElement('a'); a.href = url; a.download = f.name; a.click();
+              }
+            };
+            list.appendChild(row);
+          });
+          list.querySelectorAll('.del-btn').forEach(btn => {
+            btn.onclick = (e) => {
+              e.stopPropagation();
+              const id = Number(btn.dataset.id);
+              const txDel = db.transaction('files', 'readwrite');
+              txDel.objectStore('files').delete(id);
+              txDel.oncomplete = () => { renderFiles(); AudioEngine.click(); };
+            };
+          });
+        };
+      };
+
+      uploadBtn.onclick = () => uploadInput.click();
+      uploadInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').add({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, blob: file, ts: Date.now() });
+        tx.oncomplete = () => { renderFiles(); uploadInput.value = ''; navigator.vibrate?.(10); AudioEngine.success(); };
+      };
+      newBtn.onclick = () => {
+        const name = prompt("Enter file name (e.g., notes.txt):");
+        if (!name) return;
+        const content = prompt("Enter file content:");
+        if (content === null) return;
+        const blob = new Blob([content], { type: 'text/plain' });
+        const tx = db.transaction('files', 'readwrite');
+        tx.objectStore('files').add({ name, type: 'text/plain', size: blob.size, blob, ts: Date.now() });
+        tx.oncomplete = () => { renderFiles(); navigator.vibrate?.(10); AudioEngine.success(); };
+      };
+      if (!db) openDB().then(() => renderFiles());
+      else renderFiles();
+    }
+  },
+  {
+    id:'antivirus', name:'Security', icon:'🛡️', color:'#34c759',
+    body: () => `
+      <div style="text-align:center; padding: 40px 0;">
+        <div id="shield-icon" style="font-size:80px; filter:drop-shadow(0 10px 20px rgba(52,199,89,0.3)); transition: all 0.3s;">🛡️</div>
+        <h2 id="av-status" style="margin-top:20px; color:#34c759;">System Protected</h2>
+        <p id="av-subtext" style="opacity:0.6; margin-bottom:30px;">Last scan: Just now</p>
+        <div id="scan-progress" style="display:none; width:100%; height:6px; background:#333; border-radius:3px; margin-bottom:20px; overflow:hidden;">
+          <div id="progress-bar" style="width:0%; height:100%; background:#0a84ff; transition:width 0.1s;"></div>
+        </div>
+        <button id="scan-btn" class="btn" style="background:#34c759; margin:0 auto; width:200px;">Run System Scan</button>
+      </div>
+      <div style="background:#1c1c22; border-radius:12px; padding:16px; margin-top:20px;">
+        <h3 style="font-size:14px; margin-bottom:10px; opacity:0.8;">Threat Database</h3>
+        <div style="display:flex; justify-content:space-between; font-size:13px; border-bottom:1px solid #333; padding:8px 0;">
+          <span>Malware Definitions</span><span style="color:#34c759;">Up to date</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:13px; padding:8px 0;">
+          <span>Real-time Protection</span><span style="color:#34c759;">Active</span>
+        </div>
+      </div>
+      <div id="threat-list" style="margin-top:20px;"></div>
+    `,
+    init: () => {
+      const scanBtn = document.getElementById('scan-btn');
+      const status = document.getElementById('av-status');
+      const subtext = document.getElementById('av-subtext');
+      const shield = document.getElementById('shield-icon');
+      const threatList = document.getElementById('threat-list');
+      const progressCont = document.getElementById('scan-progress');
+      const progressBar = document.getElementById('progress-bar');
+
+      const runScan = async () => {
+        scanBtn.disabled = true;
+        scanBtn.textContent = 'Scanning...';
+        scanBtn.style.background = '#34c759';
+        status.textContent = 'Scanning system...';
+        status.style.color = '#0a84ff';
+        shield.textContent = '🔍';
+        shield.style.transform = 'scale(1.1)';
+        shield.style.filter = 'drop-shadow(0 10px 20px rgba(52,199,89,0.3))';
+        subtext.textContent = 'Scanning for threats...';
+        threatList.innerHTML = '';
+        progressCont.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.style.background = '#0a84ff';
+        AudioEngine.click();
+        for (let i = 0; i <= 100; i += 5) {
+          progressBar.style.width = i + '%';
+          await new Promise(r => setTimeout(r, 40));
+        }
+        const threats = [
+          { name: "Junk Files", desc: "2.4 GB of cache", icon: "🗑️" },
+          { name: "Tracking Cookies", desc: "Found 14 trackers", icon: "🍪" },
+          { name: "Unused Registry Keys", desc: "Found 42 keys", icon: "⚠️" }
+        ];
+        progressCont.style.display = 'none';
+        status.textContent = 'Threats Found!';
+        status.style.color = '#ff375f';
+        shield.textContent = '⚠️';
+        shield.style.filter = 'drop-shadow(0 10px 20px rgba(255,55,95,0.5))';
+        subtext.textContent = threats.length + ' issues detected.';
+        AudioEngine.error();
+        threats.forEach(t => {
+          const div = document.createElement('div');
+          div.style.cssText = 'background:#ff375f11; border:1px solid #ff375f44; border-radius:12px; padding:12px; margin-bottom:10px; display:flex; align-items:center; gap:12px;';
+          div.innerHTML = `<div style="font-size:24px;">${t.icon}</div><div style="flex:1;"><div style="color:#ff375f; font-weight:bold; font-size:14px;">${t.name}</div><div style="font-size:12px; opacity:0.7;">${t.desc}</div></div>`;
+          threatList.appendChild(div);
+        });
+        scanBtn.textContent = 'Clean System';
+        scanBtn.style.background = '#ff375f';
+        scanBtn.disabled = false;
+        scanBtn.onclick = runClean;
+      };
+
+      const runClean = async () => {
+        scanBtn.disabled = true;
+        scanBtn.textContent = 'Cleaning...';
+        status.textContent = 'Cleaning...';
+        status.style.color = '#0a84ff';
+        subtext.textContent = 'Removing threats...';
+        progressCont.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressBar.style.background = '#34c759';
+        for (let i = 0; i <= 100; i += 10) {
+          progressBar.style.width = i + '%';
+          await new Promise(r => setTimeout(r, 30));
+        }
+        setTimeout(() => {
+          status.textContent = 'System Protected';
+          status.style.color = '#34c759';
+          shield.textContent = '🛡️';
+          shield.style.filter = 'drop-shadow(0 10px 20px rgba(52,199,89,0.3))';
+          shield.style.transform = 'scale(1)';
+          subtext.textContent = 'Last scan: Just now';
+          threatList.innerHTML = '';
+          progressCont.style.display = 'none';
+          scanBtn.textContent = 'Run System Scan';
+          scanBtn.style.background = '#34c759';
+          scanBtn.disabled = false;
+          navigator.vibrate?.([20, 50, 20]);
+          AudioEngine.success();
+          scanBtn.onclick = runScan;
+        }, 500);
+      };
+      scanBtn.onclick = runScan;
+    }
+  },
+  {
+    id:'messages', name:'Messages', icon:'💬', color:'#0a84ff',
+    fullscreen: true,
+    body: () => `
+      <div id="chat-list-view" style="height:100%; background:#111; display:flex; flex-direction:column;">
+        <div style="padding:10px 20px; background:#1c1c22; font-size:24px; font-weight:bold; border-bottom:1px solid #333;">Chats</div>
+        <div style="flex:1; overflow-y:auto; padding:0 20px;">
+          ${[{id:1, name:"Alex (WebOS Dev)", color:"#ff9500", preview:"Hey! Did you see the new update?", time:"9:41 AM"},
+             {id:2, name:"Sarah", color:"#ff375f", preview:"Let's meet at 5pm.", time:"Yesterday"},
+             {id:3, name:"WebOS Support", color:"#34c759", preview:"Your device is up to date.", time:"Monday"}].map(c => `
+            <div class="contact-row" data-chat-id="${c.id}">
+              <div class="contact-avatar" style="background:${c.color}">${c.name[0]}</div>
+              <div class="contact-info">
+                <div class="contact-name">${c.name}</div>
+                <div class="contact-preview" id="preview-${c.id}">${c.preview}</div>
+              </div>
+              <div class="contact-time">${c.time}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      <div id="chat-room-view" style="height:100%; background:#111; display:none; flex-direction:column;">
+        <div style="height:60px; padding:0 20px; background:#1c1c22; display:flex; align-items:center; gap:10px; border-bottom:1px solid #333;">
+          <button id="chat-back" style="background:none;border:none;color:#4da3ff;font-size:16px;cursor:pointer;">‹ Back</button>
+          <div id="chat-title" style="font-weight:bold;font-size:16px;">Chat</div>
+        </div>
+        <div id="chat-log" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column;"></div>
+        <div style="padding:10px; background:#1c1c22; display:flex; gap:8px;">
+          <input id="chat-input" placeholder="Message..." style="flex:1; padding:12px; border-radius:20px; border:none; background:#333; color:#fff; font-size:15px; outline:none;">
+          <button id="send-btn" class="btn" style="background:#0a84ff; padding:12px 18px;">Send</button>
+        </div>
+      </div>
+    `,
+    init: () => {
+      const listView = document.getElementById('chat-list-view');
+      const roomView = document.getElementById('chat-room-view');
+      const log = document.getElementById('chat-log');
+      const input = document.getElementById('chat-input');
+      const sendBtn = document.getElementById('send-btn');
+      let activeChatId = null;
+
+      const addMsg = (text, type) => {
+        const div = document.createElement('div');
+        div.className = `chat-bubble chat-${type}`;
+        const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        div.innerHTML = `${text} <span class="chat-time">${time}</span>`;
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+      };
+
+      const openRoom = (id) => {
+        const names = {1:"Alex (WebOS Dev)", 2:"Sarah", 3:"WebOS Support"};
+        activeChatId = id;
+        listView.style.display = 'none';
+        roomView.style.display = 'flex';
+        document.getElementById('chat-title').textContent = names[id];
+        AudioEngine.click();
+        log.innerHTML = '';
+        if (id === 1) { addMsg("Hey! Did you see the new update?", "them"); addMsg("It looks amazing.", "them"); }
+        setTimeout(() => log.scrollTop = log.scrollHeight, 50);
+      };
+
+      const closeRoom = () => {
+        activeChatId = null;
+        roomView.style.display = 'none';
+        listView.style.display = 'flex';
+        Keyboard.hide();
+        AudioEngine.click();
+      };
+
+      document.querySelectorAll('.contact-row').forEach(row => {
+        row.onclick = () => openRoom(Number(row.dataset.chatId));
+      });
+      document.getElementById('chat-back').onclick = closeRoom;
+
+      const sendMsg = () => {
+        if (!input.value.trim() || !activeChatId) return;
+        addMsg(input.value, "me");
+        const msg = input.value;
+        input.value = '';
+        const previewEl = document.getElementById(`preview-${activeChatId}`);
+        if (previewEl) previewEl.textContent = "You: " + msg;
+        AudioEngine.pop();
+        const typing = document.createElement('div');
+        typing.className = 'typing-indicator';
+        typing.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+        log.appendChild(typing);
+        log.scrollTop = log.scrollHeight;
+        setTimeout(() => {
+          typing.remove();
+          const replies = ["That's cool!", "Haha yes.", "I agree.", "Let me check.", "On my way!"];
+          addMsg(replies[Math.floor(Math.random() * replies.length)], "them");
+          AudioEngine.click();
+        }, 1500);
+      };
+
+      sendBtn.onclick = sendMsg;
+      input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); sendMsg(); } };
+
+      window.closeChatRoom = closeRoom;
+      window.openChatRoom = openRoom;
+    }
+  },
+  {
+    id:'store', name:'App Store', icon:'🛍️', color:'#007aff',
+    body: () => `
+      <h2>App Store</h2>
+      <div style="background:#1c1c22;border-radius:12px;padding:16px;margin-bottom:16px;">
+        <h3 style="font-size:16px;margin-bottom:8px;">Developer Options</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div><strong>Install .json App</strong><br><span style="font-size:12px;opacity:.6;">Load an app from a file</span></div>
+          <button id="load-json-btn" class="btn" style="background:#ff9500;padding:8px 16px;font-size:13px;width:80px;">Browse</button>
+        </div>
+        <input type="file" id="json-file-input" accept=".json" style="display:none;">
+      </div>
+      <div style="background:#1c1c22;border-radius:12px;padding:16px;margin-bottom:16px;">
+        <h3 style="font-size:16px;margin-bottom:8px;">Available Apps</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ffffff1a;padding:12px 0;">
+          <div><strong>3D Game</strong><br><span style="font-size:12px;opacity:.6;">Interactive WebGL Cube</span></div>
+          <button class="install-btn btn" data-app="game" style="background:#0a84ff;padding:8px 16px;font-size:13px;width:80px;">Install</button>
+        </div>
+      </div>
+    `,
+    init: () => {
+      document.querySelectorAll('.install-btn').forEach(btn => {
+        btn.onclick = () => {
+          const appId = btn.dataset.app;
+          if (APPS.some(a => a.id === appId)) return;
+          if (appId === 'game') {
+            APPS.push(makeGameApp());
+          }
+          LayoutSave.save(); btn.textContent = 'Done'; btn.style.background = '#34c759'; btn.disabled = true; renderHome(); renderDock(); AudioEngine.success();
+        };
+      });
+      const fileBtn = document.getElementById('load-json-btn');
+      const fileInput = document.getElementById('json-file-input');
+      fileBtn.onclick = () => fileInput.click();
+      fileInput.onchange = (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const appData = JSON.parse(event.target.result);
+            if (!appData.id || !appData.name || !appData.body) throw new Error("Invalid format: id, name, and body are required");
+            appData._raw = JSON.stringify(appData);
+            if (appData.js) appData.init = new Function(appData.js);
+            APPS.push(appData); LayoutSave.save(); renderHome(); renderDock(); navigator.vibrate?.([10, 50, 20]); alert(`App "${appData.name}" installed!`); closeApp(); AudioEngine.success();
+          } catch (err) { alert("Failed to install: " + err.message); AudioEngine.error(); }
+        };
+        reader.readAsText(file);
+        fileInput.value = '';
+      };
+    }
+  },
+  {
+    id:'maps', name:'Maps', icon:'🗺️', color:'#30d158',
+    fullscreen: true,
+    body: () => `
+      <div style="width:100%;height:100%;position:relative;background:#111;overflow:hidden;cursor:grab;" id="map-wrapper">
+        <canvas id="map-canvas" style="width:100%;height:100%;display:block;"></canvas>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-100%);font-size:36px;filter:drop-shadow(0 4px 6px rgba(0,0,0,0.5));z-index:10;pointer-events:none;">📍</div>
+        <div style="position:absolute;bottom:80px;right:16px;display:flex;flex-direction:column;gap:1px;z-index:10;">
+          <button id="zoom-in" style="width:40px;height:40px;background:#fff;color:#333;border:none;border-radius:8px 8px 0 0;font-size:20px;font-weight:bold;cursor:pointer;">+</button>
+          <button id="zoom-out" style="width:40px;height:40px;background:#fff;color:#333;border:none;border-radius:0 0 8px 8px;font-size:20px;font-weight:bold;cursor:pointer;">−</button>
+        </div>
+      </div>
+    `,
+    init: () => {
+      const canvas = document.getElementById('map-canvas');
+      const ctx = canvas.getContext('2d');
+      const wrapper = document.getElementById('map-wrapper');
+      const resize = () => { canvas.width = wrapper.clientWidth; canvas.height = wrapper.clientHeight; };
+      resize();
+      const onResize = () => resize();
+      window.addEventListener('resize', onResize);
+      document.getElementById('back').addEventListener('click', () => { window.removeEventListener('resize', onResize); }, { once: true });
+
+      let scale = 1, x = 0, y = 0, dragging = false, startX, startY, startXval, startYval;
+      const draw = () => {
+        ctx.fillStyle = '#1e1e24'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.save(); ctx.translate(canvas.width/2 + x, canvas.height/2 + y); ctx.scale(scale, scale);
+        ctx.strokeStyle = '#2a2a35'; ctx.lineWidth = 2;
+        for(let i=-20; i<20; i++) {
+          ctx.beginPath(); ctx.moveTo(i*40, -1000); ctx.lineTo(i*40, 1000); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(-1000, i*40); ctx.lineTo(1000, i*40); ctx.stroke();
+        }
+        ctx.fillStyle = '#2c4a33'; ctx.fillRect(-150, -100, 100, 80); ctx.fillRect(80, 60, 120, 140); ctx.fillRect(200, -200, 80, 80);
+        ctx.fillStyle = '#2a2a35'; ctx.fillRect(-220, 150, 60, 60); ctx.fillRect(-100, -250, 80, 40); ctx.fillRect(50, -180, 40, 100);
+        ctx.strokeStyle = '#444'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(-500, 0); ctx.lineTo(500, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -500); ctx.lineTo(0, 500); ctx.stroke();
+        ctx.fillStyle = '#1a3b5c';
+        ctx.beginPath(); ctx.moveTo(-300, -500); ctx.bezierCurveTo(-200, 0, -100, 200, -200, 500); ctx.lineTo(-300, 500); ctx.bezierCurveTo(-200, 200, -300, 0, -400, -500); ctx.fill();
+        ctx.restore();
+      };
+      draw();
+      wrapper.onpointerdown = e => { if (e.target.tagName === 'BUTTON') return; dragging = true; startX = e.clientX; startY = e.clientY; startXval = x; startYval = y; wrapper.style.cursor = 'grabbing'; };
+      wrapper.onpointermove = e => { if (!dragging) return; x = startXval + (e.clientX - startX); y = startYval + (e.clientY - startY); draw(); };
+      wrapper.onpointerup = () => { dragging = false; wrapper.style.cursor = 'grab'; };
+      document.getElementById('zoom-in').onclick = () => { scale = Math.min(3, scale + 0.3); draw(); AudioEngine.click(); };
+      document.getElementById('zoom-out').onclick = () => { scale = Math.max(0.5, scale - 0.3); draw(); AudioEngine.click(); };
+    }
+  },
+  {
+    id:'browser', name:'Browser', icon:'🌐', color:'#4da3ff',
+    fullscreen: true,
+    body: () => `
+      <div style="display:flex;flex-direction:column;height:100%;background:#1c1c22;">
+        <div style="padding:10px;display:flex;gap:8px;background:#111;border-bottom:1px solid #333;">
+          <button id="web-back" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;">‹</button>
+          <input id="web-url" type="text" value="https://en.wikipedia.org/wiki/Web_OS" style="flex:1;padding:8px 12px;border-radius:20px;border:none;background:#333;color:#fff;font-size:14px;outline:none;">
+          <button id="web-go" style="background:none;border:none;color:#4da3ff;font-size:14px;font-weight:bold;cursor:pointer;">Go</button>
+        </div>
+        <iframe id="web-frame" src="https://en.wikipedia.org/wiki/Web_OS" style="flex:1;width:100%;border:none;background:#fff;"></iframe>
+      </div>
+    `,
+    init: () => {
+      const frame = document.getElementById('web-frame');
+      const url = document.getElementById('web-url');
+      const navigate = () => { let val = url.value.trim(); if (!val) return; if (!/^https?:\/\//i.test(val)) val = 'https://' + val; frame.src = val; AudioEngine.click(); };
+      document.getElementById('web-go').onclick = navigate;
+      url.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(); });
+      document.getElementById('web-back').onclick = () => { try { frame.contentWindow.history.back(); } catch(e) { frame.src = 'https://en.wikipedia.org/wiki/Web_OS'; } AudioEngine.click(); };
+    }
+  },
+  {
+    id:'phone', name:'Phone', icon:'📞', color:'#34c759',
+    body: () => `<h2>Keypad</h2><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:240px;margin:16px auto;">${['1','2','3','4','5','6','7','8','9','*','0','#'].map(n=>`<button class="dial-btn" data-n="${n}" style="padding:16px;font-size:20px;border-radius:50%;border:none;background:#ffffff14;color:#fff;cursor:pointer;transition:background .15s;">${n}</button>`).join('')}</div><div style="display:flex;justify-content:center;align-items:center;margin:12px 0;gap:20px;"><div id="dial-display" style="font-size:24px;letter-spacing:2px;min-width:100px;text-align:center;"></div><button id="backspace-btn" style="background:none;border:none;color:#ff375f;font-size:20px;cursor:pointer;">⌫</button></div><button id="call-btn" class="btn" style="margin:0 auto;background:#34c759;width:160px;">📞 Call</button>`,
+    init: () => {
+      const d = document.getElementById('dial-display');
+      document.querySelectorAll('.dial-btn').forEach(b => b.onclick = () => { d.textContent += b.dataset.n; navigator.vibrate?.(5); AudioEngine.click(); });
+      document.getElementById('backspace-btn').onclick = () => { d.textContent = d.textContent.slice(0, -1); AudioEngine.click(); };
+      let callTimer = null;
+      document.getElementById('call-btn').onclick = () => {
+        if (!d.textContent) return;
+        navigator.vibrate?.([20,40,20]);
+        d.innerHTML = `<span style="color:#34c759;font-size:16px;">📞 Calling...</span>`;
+        clearTimeout(callTimer);
+        callTimer = setTimeout(() => d.textContent = '', 2500);
+        AudioEngine.swoosh();
+      };
+      document.getElementById('back').addEventListener('click', () => clearTimeout(callTimer), { once: true });
+    }
+  },
+  {
+    id:'camera', name:'Camera', icon:'📷', color:'#555',
+    body: () => `<h2>Camera</h2><div style="width:100%; aspect-ratio:3/4; background:#000; border-radius:14px; overflow:hidden; display:flex; align-items:center; justify-content:center;"><video id="cam-video" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;display:none;"></video></div><div style="display:flex;gap:10px;margin-top:14px;"><button id="cam-start" class="btn" style="flex:1;background:#555;">Start Camera</button><button id="cam-stop" class="btn" style="flex:1;background:#ff375f;display:none;">Stop</button></div><p id="cam-status" style="text-align:center;font-size:13px;opacity:.7;margin-top:10px;"></p>`,
+    init: () => {
+      const v = document.getElementById('cam-video'), s = document.getElementById('cam-status');
+      const btnStart = document.getElementById('cam-start'), btnStop = document.getElementById('cam-stop');
+      let stream = null;
+      btnStart.onclick = async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'environment' }, audio:false });
+          v.srcObject = stream; v.style.display = 'block';
+          s.textContent = '✅ Camera active'; s.style.color = '#34c759';
+          btnStart.style.display = 'none'; btnStop.style.display = 'block';
+          AudioEngine.pop();
+        } catch (e) {
+          s.textContent = '❌ ' + e.message; s.style.color = '#ff375f'; AudioEngine.error();
+        }
+      };
+      btnStop.onclick = () => {
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        v.srcObject = null; v.style.display = 'none';
+        s.textContent = 'Camera stopped'; s.style.color = '#fff';
+        btnStart.style.display = 'block'; btnStop.style.display = 'none';
+        AudioEngine.click();
+      };
+      document.getElementById('back').addEventListener('click', () => {
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      }, { once: true });
+    }
+  },
+  {
+    id:'photos', name:'Photos', icon:'🌄', color:'#ff9f0a',
+    body: () => `<h2>Photos</h2><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;">${Array.from({length:18},(_,i)=>`<div class="photo-tile" style="aspect-ratio:1;border-radius:6px;background:linear-gradient(${i*40}deg, hsl(${i*30},70%,45%), hsl(${i*30+40},70%,30%));cursor:pointer;transition:transform .2s;position:relative;"><span style="position:absolute;bottom:4px;right:4px;font-size:10px;opacity:0.5;">${i+1}</span></div>`).join('')}</div>`,
+    init: () => { document.querySelectorAll('.photo-tile').forEach(t => t.onclick = () => { t.style.transform = t.style.transform ? '' : 'scale(1.15)'; AudioEngine.click(); }); }
+  },
+  {
+    id:'music', name:'Music', icon:'🎵', color:'#ff375f',
+    body: () => `<h2>Music</h2><div style="text-align:center;padding:10px 0;"><div style="width:200px;height:200px;margin:0 auto;border-radius:18px;background:linear-gradient(135deg,#ff375f,#ff9f0a,#ffcc00);box-shadow:0 10px 40px #ff375f44;display:flex;align-items:center;justify-content:center;font-size:60px;">🎵</div><h3 style="margin-top:20px;font-size:18px;">WebOS Theme</h3><p style="opacity:.6;font-size:13px;">System Sound</p><audio id="audio" controls preload="metadata" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" style="width:100%;margin-top:20px;"></audio></div>`,
+    init: () => { const a = document.getElementById('audio'); if (a) a.volume = 0.5; }
+  },
+  {
+    id:'settings', name:'Settings', icon:'⚙️', color:'#8e8e93',
+    body: () => `
+      <h2>Settings</h2>
+      <div style="margin-top:16px;background:#1c1c22;border-radius:12px;padding:0 16px;">
+        ${[['Wi-Fi','set-wifi',true],['Bluetooth','set-bt',true],['Airplane Mode','set-air',false]].map(([l,id,on])=>`<label style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #ffffff14;"><span>${l}</span><div class="switch"><input type="checkbox" id="${id}" ${on?'checked':''}><span class="slider-sw"></span></div></label>`).join('')}
+        <label style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #ffffff14;">
+          <span>Brightness</span><input type="range" id="set-bright" min="20" max="100" value="80" style="width:130px;accent-color:#0a84ff;">
+        </label>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;">
+          <span>Passcode</span>
+          <button id="pass-setup-btn" class="btn" style="background:#333;padding:6px 12px;font-size:13px;">${Pass.has() ? 'Change' : 'Set'}</button>
+        </div>
+      </div>
+      <div style="margin-top:20px;font-size:13px;opacity:.6;padding-left:6px;text-transform:uppercase;letter-spacing:.5px;">Developer Options</div>
+      <div style="margin-top:8px;background:#1c1c22;border-radius:12px;padding:0 16px;">
+        ${[['Show Touches','dev-touch'],['FPS Counter','dev-fps'],['Layout Borders','dev-borders'],['Disable Animations','dev-noanim'],['Console Overlay','dev-console'],['Mute Sounds','dev-mute']].map(([l,id])=>`<label style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #ffffff14;"><span>${l}</span><div class="switch"><input type="checkbox" id="${id}" ${DevOpts.get(id)?'checked':''}><span class="slider-sw"></span></div></label>`).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #ffffff14;"><span>Edit Home Screen</span><button id="dev-edit" class="btn" style="background:#333;padding:6px 12px;font-size:13px;">Enter</button></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;border-bottom:1px solid #ffffff14;"><span>Reset All Data</span><button id="dev-reset" class="btn" style="background:#ff375f;padding:6px 12px;font-size:13px;">Reset</button></div>
+        <pre id="dev-info" style="padding:14px 0;font-size:11px;opacity:.6;white-space:pre-wrap;word-break:break-all;font-family:monospace;"></pre>
+      </div>
+    `,
+    init: () => {
+      DevOpts.bind();
+      const wp = document.getElementById('wallpaper');
+      const saved = localStorage.getItem('webos-bright') || '80';
+      const b = document.getElementById('set-bright');
+      b.value = saved;
+      wp.style.filter = `brightness(${saved}%)`;
+      b.oninput = e => { wp.style.filter = `brightness(${e.target.value}%)`; localStorage.setItem('webos-bright', e.target.value); };
+      document.getElementById('pass-setup-btn').onclick = async () => {
+        AudioEngine.click();
+        if (Pass.has() && !(await checkPass('Enter Current Passcode'))) return;
+        await newPass();
+        openApp(APPS.find(a => a.id === 'settings'));
+      };
+    }
+  },
+  {
+    id:'notes', name:'Notes', icon:'📝', color:'#ffcc00',
+    body: () => `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><h2 style="margin:0;">Notes</h2><button id="clear-note" style="background:none;border:none;color:#ff375f;font-size:14px;cursor:pointer;">Clear</button></div><textarea id="note-area" placeholder="Write something..." style="width:100%;height:calc(100vh - 200px);padding:16px;border-radius:12px;border:none;background:#1c1c22;color:#fff;font-size:16px;font-family:inherit;resize:none;line-height:1.6;outline:none;"></textarea><p id="note-status" style="font-size:12px;opacity:.5;text-align:right;margin-top:8px;height:16px;"></p>`,
+    init: () => {
+      const a = document.getElementById('note-area'), s = document.getElementById('note-status');
+      a.value = localStorage.getItem('webos-note') || '';
+      let t;
+      a.oninput = () => { localStorage.setItem('webos-note', a.value); s.textContent = 'Saved ✓'; s.style.color = '#34c759'; clearTimeout(t); t = setTimeout(() => s.textContent = '', 1500); };
+      document.getElementById('clear-note').onclick = () => { a.value = ''; localStorage.removeItem('webos-note'); s.textContent = 'Cleared'; AudioEngine.error(); };
+    }
+  }
+];
+
+const makeGameApp = () => ({ id:'game', name:'3D Cube', icon:'🎮', color:'#ff375f',
+              fullscreen: true,
+              body: () => `<div id="game-container" style="width:100%;height:100%;position:relative;overflow:hidden;background:#000;"><canvas id="game-canvas" style="width:100%;height:100%;display:block;touch-action:none;"></canvas><p style="position:absolute;bottom:60px;width:100%;text-align:center;color:#fff;opacity:0.5;font-size:12px;pointer-events:none;">Drag to rotate</p></div>`,
+              init: () => {
+                const loadThree = (cb) => { if (window.THREE) return cb(); const script = document.createElement('script'); script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'; script.onload = cb; document.head.appendChild(script); };
+                loadThree(() => {
+                  const container = document.getElementById('game-container');
+                  const canvas = document.getElementById('game-canvas');
+                  if (!container || !canvas) return;
+                  const scene = new THREE.Scene();
+                  const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+                  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+                  renderer.setSize(container.clientWidth, container.clientHeight);
+                  renderer.setPixelRatio(window.devicePixelRatio);
+                  const geometry = new THREE.BoxGeometry(2, 2, 2);
+                  const material = new THREE.MeshStandardMaterial({ color: 0x007aff, roughness: 0.3, metalness: 0.8 });
+                  const cube = new THREE.Mesh(geometry, material);
+                  scene.add(cube);
+                  const light = new THREE.PointLight(0xffffff, 1, 100); light.position.set(5, 5, 5); scene.add(light); scene.add(new THREE.AmbientLight(0x404040));
+                  camera.position.z = 5;
+                  let isDragging = false, prevX = 0, prevY = 0;
+                  canvas.addEventListener('pointerdown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; });
+                  window.addEventListener('pointerup', () => isDragging = false);
+                  window.addEventListener('pointermove', e => { if (!isDragging) return; cube.rotation.y += (e.clientX - prevX) * 0.01; cube.rotation.x += (e.clientY - prevY) * 0.01; prevX = e.clientX; prevY = e.clientY; });
+                  let animId;
+                  const animate = () => { animId = requestAnimationFrame(animate); if (!isDragging) { cube.rotation.x += 0.005; cube.rotation.y += 0.005; } renderer.render(scene, camera); };
+                  animate();
+                  document.getElementById('back').addEventListener('click', () => { cancelAnimationFrame(animId); renderer.dispose(); }, { once: true });
+                });
+              }
+            });
+
+/* ==================== LOCAL SAVE (layout & installed apps) ==================== */
+const LayoutSave = (() => {
+  const KEY = 'webos-layout';
+  const BUILTIN = APPS.map(a => a.id);
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(KEY)) || {}; } catch(_) {}
+  const save = () => {
+    st.order = APPS.map(a => a.id);
+    st.removed = BUILTIN.filter(id => !APPS.some(a => a.id === id));
+    st.game = APPS.some(a => a.id === 'game');
+    st.custom = APPS.filter(a => a._raw).map(a => a._raw);
+    try { localStorage.setItem(KEY, JSON.stringify(st)); } catch(e) { console.warn('Layout save failed', e); }
+  };
+  const restore = () => {
+    if (!st.order) return;
+    try {
+      if (st.game && !APPS.some(a => a.id === 'game')) APPS.push(makeGameApp());
+      (st.custom || []).forEach(raw => {
+        try {
+          const d = JSON.parse(raw);
+          if (APPS.some(a => a.id === d.id)) return;
+          if (d.js) d.init = new Function(d.js);
+          d._raw = raw; APPS.push(d);
+        } catch(e) { console.warn('Custom app restore failed', e); }
+      });
+      APPS = APPS.filter(a => !(st.removed || []).includes(a.id));
+      const idx = id => { const i = st.order.indexOf(id); return i === -1 ? 1e6 : i; };
+      APPS.sort((x, y) => idx(x.id) - idx(y.id));
+    } catch(e) { console.warn('Layout restore failed', e); }
+  };
+  const setWidgetHidden = v => { st.widgetHidden = v; save(); };
+  const widgetHidden = () => !!st.widgetHidden;
+  const clear = () => { localStorage.removeItem(KEY); };
+  return { save, restore, setWidgetHidden, widgetHidden, clear };
+})();
+LayoutSave.restore();
+
+const DOCK_APPS = ['maker', 'files', 'messages', 'settings'];
+const makeIcon = app => `<div class="app-icon" style="background:${app.color}">${app.icon}</div>`;
+
+/* ==================== LONG-PRESS => EDIT MODE ==================== */
+function enterEditMode() {
+  const home = document.getElementById('home');
+  if (home.classList.contains('edit-mode')) return;
+  home.classList.add('edit-mode');
+  navigator.vibrate?.(15);
+  try { AudioEngine.pop(); } catch(_) {}
+}
+function attachLongPress(el, onTap) {
+  const home = document.getElementById('home');
+  let timer = null, sx = 0, sy = 0, fired = false, moved = false;
+  const clear = () => { clearTimeout(timer); timer = null; };
+  el.addEventListener('contextmenu', e => { e.preventDefault(); enterEditMode(); });
+  el.addEventListener('dragstart', e => e.preventDefault());
+  el.addEventListener('pointerdown', e => {
+    if (e.target.classList.contains('del-badge')) return;
+    if (home.classList.contains('edit-mode')) return;
+    sx = e.clientX; sy = e.clientY; fired = false; moved = false;
+    clear();
+    timer = setTimeout(() => { fired = true; enterEditMode(); }, 450);
+  });
+  el.addEventListener('pointermove', e => {
+    if (Math.hypot(e.clientX - sx, e.clientY - sy) > 12) { moved = true; clear(); }
+  });
+  el.addEventListener('pointerup', () => {
+    const wasTimerRunning = timer !== null;
+    clear();
+    if (onTap && wasTimerRunning && !fired && !moved && !home.classList.contains('edit-mode')) onTap();
+  });
+  el.addEventListener('pointercancel', () => { if (!fired) clear(); });
+}
+
+/* ==================== HOME SCREEN & WIDGETS ==================== */
+function renderHome() {
+  const home = document.getElementById('home');
+  home.innerHTML = '';
+
+  // 1. Render Widget
+  const widgetEl = document.createElement('div');
+  widgetEl.className = 'widget';
+  widgetEl.id = 'home-widget';
+  widgetEl.innerHTML = `
+    <div class="del-badge">✖</div>
+    <div class="widget-time" id="widget-time">9:41</div>
+    <div class="widget-date" id="widget-date">Tuesday, Oct 29</div>
+    <div class="widget-weather">
+      <span class="widget-icon">⛅</span>
+      <div><strong>22°</strong><br><span style="opacity:0.7">Partly Cloudy</span></div>
+    </div>
+  `;
+
+  widgetEl.querySelector('.del-badge').onclick = (e) => {
+    e.stopPropagation();
+    if (confirm("Remove this widget?")) {
+      widgetEl.remove();
+      LayoutSave.setWidgetHidden(true);
+      AudioEngine.error();
+    }
+  };
+
+  attachLongPress(widgetEl, null);
+
+  home.appendChild(widgetEl);
+  if (LayoutSave.widgetHidden()) widgetEl.remove();
+
+  // 2. Render Apps
+  APPS.forEach(app => {
+    const el = document.createElement('div');
+    el.className = 'app';
+    el.dataset.id = app.id;
+    el.innerHTML = `<div class="del-badge">✖</div>${makeIcon(app)}<div class="app-name">${app.name}</div>`;
+
+    el.querySelector('.del-badge').onclick = (e) => {
+      e.stopPropagation();
+      if (confirm(`Uninstall ${app.name}?`)) {
+        APPS = APPS.filter(a => a.id !== app.id);
+        LayoutSave.save();
+        renderHome();
+        renderDock();
+        navigator.vibrate?.(20);
+        AudioEngine.error();
+      }
+    };
+
+    attachLongPress(el, () => openApp(app));
+
+    home.appendChild(el);
+  });
+}
+
+/* ==================== CUSTOM DRAG AND DROP ==================== */
+let draggedItem = null;
+let placeholder = document.createElement('div');
+placeholder.style.cssText = 'width:100%; height:100%; border-radius:14px; background:#ffffff11; grid-column: span 1;';
+
+function initDrag() {
+  const home = document.getElementById('home');
+
+  home.addEventListener('pointerdown', (e) => {
+    // FIX: let delete-badge taps through untouched (otherwise preventDefault blocks the click)
+    if (e.target.classList.contains('del-badge')) return;
+
+    const item = e.target.closest('.app, .widget');
+    if (!item || !home.classList.contains('edit-mode')) return;
+
+    e.preventDefault();
+    draggedItem = item;
+    const rect = item.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+
+    item.style.position = 'fixed';
+    item.style.left = (e.clientX - offsetX) + 'px';
+    item.style.top = (e.clientY - offsetY) + 'px';
+    item.style.width = rect.width + 'px';
+    item.style.height = rect.height + 'px';
+    item.style.zIndex = '999';
+    item.style.opacity = '0.9';
+    item.style.transform = 'scale(1.1)';
+    item.classList.add('dragging');
+
+    placeholder.style.width = rect.width + 'px';
+    placeholder.style.height = rect.height + 'px';
+    if (item.classList.contains('widget')) placeholder.style.gridColumn = 'span 2';
+    else placeholder.style.gridColumn = 'span 1';
+    item.parentNode.insertBefore(placeholder, item.nextSibling);
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+  });
+
+  function onPointerMove(e) {
+    if (!draggedItem) return;
+    e.preventDefault();
+
+    const rect = draggedItem.getBoundingClientRect();
+    const offsetX = rect.width / 2;
+    const offsetY = rect.height / 2;
+
+    draggedItem.style.left = (e.clientX - offsetX) + 'px';
+    draggedItem.style.top = (e.clientY - offsetY) + 'px';
+
+    const items = [...home.children].filter(c => c !== draggedItem && c !== placeholder);
+    const target = items.find(el => {
+      const r = el.getBoundingClientRect();
+      return e.clientX > r.left && e.clientX < r.right && e.clientY > r.top && e.clientY < r.bottom;
+    });
+
+    if (target) {
+      const targetRect = target.getBoundingClientRect();
+      const isAfter = (e.clientX - targetRect.left) > targetRect.width / 2;
+      if (isAfter) target.parentNode.insertBefore(placeholder, target.nextSibling);
+      else target.parentNode.insertBefore(placeholder, target);
+    }
+  }
+
+  function onPointerUp() {
+    if (!draggedItem) return;
+
+    draggedItem.style.position = '';
+    draggedItem.style.left = '';
+    draggedItem.style.top = '';
+    draggedItem.style.width = '';
+    draggedItem.style.height = '';
+    draggedItem.style.zIndex = '';
+    draggedItem.style.opacity = '';
+    draggedItem.style.transform = '';
+    draggedItem.classList.remove('dragging');
+
+    if (placeholder.parentNode) placeholder.parentNode.insertBefore(draggedItem, placeholder);
+    placeholder.remove();
+
+    const newOrder = [...document.querySelectorAll('#home .app')].map(el => el.dataset.id);
+    APPS.sort((a, b) => {
+      const ai = newOrder.indexOf(a.id), bi = newOrder.indexOf(b.id);
+      if (ai === -1) return 1; if (bi === -1) return -1;
+      return ai - bi;
+    });
+    LayoutSave.save();
+
+    draggedItem = null;
+    AudioEngine.pop();
+    document.removeEventListener('pointermove', onPointerMove);
+    document.removeEventListener('pointerup', onPointerUp);
+  }
+}
+initDrag();
+
+document.getElementById('home').addEventListener('pointerdown', (e) => {
+  if (e.target.id === 'home' && e.target.classList.contains('edit-mode')) {
+    e.target.classList.remove('edit-mode');
+    const newOrder = [...document.querySelectorAll('#home .app')].map(el => el.dataset.id);
+    APPS.sort((a, b) => newOrder.indexOf(a.id) - newOrder.indexOf(b.id));
+    LayoutSave.save();
+  }
+});
+
+/* ==================== DOCK ==================== */
+function renderDock() {
+  const dock = document.getElementById('dock');
+  dock.innerHTML = '';
+  DOCK_APPS.forEach(id => {
+    const app = APPS.find(a => a.id === id);
+    if (!app) return;
+    const el = document.createElement('div');
+    el.className = 'app';
+    el.innerHTML = makeIcon(app);
+    attachLongPress(el, () => openApp(app));
+    dock.appendChild(el);
+  });
+}
+renderDock();
+renderHome();
+
+/* ==================== DEVELOPER OPTIONS ==================== */
+const DevOpts = (() => {
+  const KEY = 'webos-dev';
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(_) {}
+  const phone = () => document.getElementById('phone');
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch(_) {} };
+  const get = id => !!st[id];
+
+  // --- Show touches
+  const dots = {};
+  const touchDown = e => { const d = document.createElement('div'); d.style.cssText = 'position:fixed;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;background:#0a84ff66;border:2px solid #0a84ff;pointer-events:none;z-index:99999;left:'+e.clientX+'px;top:'+e.clientY+'px'; document.body.appendChild(d); dots[e.pointerId] = d; };
+  const touchMove = e => { const d = dots[e.pointerId]; if (d) { d.style.left = e.clientX+'px'; d.style.top = e.clientY+'px'; } };
+  const touchUp = e => { const d = dots[e.pointerId]; if (d) { d.remove(); delete dots[e.pointerId]; } };
+  // --- FPS
+  let fpsEl = null, fpsRaf = 0;
+  const fpsStart = () => {
+    fpsEl = document.createElement('div');
+    fpsEl.style.cssText = 'position:fixed;top:4px;left:50%;transform:translateX(-50%);padding:2px 8px;border-radius:8px;background:#000a;color:#34c759;font:11px monospace;z-index:99998;pointer-events:none';
+    document.body.appendChild(fpsEl);
+    let last = performance.now(), frames = 0;
+    const loop = t => { frames++; if (t - last >= 500) { fpsEl.textContent = Math.round(frames * 1000 / (t - last)) + ' FPS'; frames = 0; last = t; } fpsRaf = requestAnimationFrame(loop); };
+    fpsRaf = requestAnimationFrame(loop);
+  };
+  const fpsStop = () => { cancelAnimationFrame(fpsRaf); fpsEl?.remove(); fpsEl = null; };
+  // --- Console overlay
+  const logs = [];
+  let conEl = null;
+  const fmt = a => { try { return typeof a === 'string' ? a : (a instanceof Error ? a.stack || a.message : JSON.stringify(a)); } catch(_) { return String(a); } };
+  const push = (type, args) => { logs.push([type, args.map(fmt).join(' ')]); if (logs.length > 200) logs.shift(); renderCon(); };
+  ['log','warn','error','info'].forEach(m => { const o = console[m].bind(console); console[m] = (...a) => { o(...a); push(m, a); }; });
+  window.addEventListener('error', e => push('error', [e.message + ' (' + (e.lineno||'?') + ')']));
+  window.addEventListener('unhandledrejection', e => push('error', ['Promise: ' + fmt(e.reason)]));
+  const renderCon = () => {
+    if (!conEl) return;
+    conEl.querySelector('.dev-log').innerHTML = logs.map(([t, m]) => '<div style="color:' + ({error:'#ff453a',warn:'#ffd60a',info:'#64d2ff'}[t] || '#ddd') + ';border-bottom:1px solid #ffffff10;padding:2px 0;">' + m.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>').join('');
+    const l = conEl.querySelector('.dev-log'); l.scrollTop = l.scrollHeight;
+  };
+  const conStart = () => {
+    conEl = document.createElement('div');
+    conEl.style.cssText = 'position:fixed;left:0;right:0;bottom:0;height:35%;background:#000d;color:#ddd;font:11px monospace;z-index:99997;display:flex;flex-direction:column;border-top:1px solid #ffffff30;';
+    conEl.innerHTML = '<div style="display:flex;justify-content:space-between;padding:4px 8px;background:#1c1c22;"><span>Console</span><span class="dev-clear" style="color:#ff375f;cursor:pointer;">Clear</span></div><div class="dev-log" style="flex:1;overflow:auto;padding:4px 8px;user-select:text;"></div>';
+    conEl.querySelector('.dev-clear').onclick = () => { logs.length = 0; renderCon(); };
+    document.body.appendChild(conEl); renderCon();
+  };
+  const conStop = () => { conEl?.remove(); conEl = null; };
+
+  const styleEl = document.createElement('style'); document.head.appendChild(styleEl);
+  const apply = id => {
+    const on = get(id);
+    if (id === 'dev-touch') ['pointerdown','pointermove','pointerup','pointercancel'].forEach((ev, i) => document[on ? 'addEventListener' : 'removeEventListener'](ev, [touchDown, touchMove, touchUp, touchUp][i], true));
+    if (id === 'dev-fps') on ? (!fpsEl && fpsStart()) : fpsStop();
+    if (id === 'dev-console') on ? (!conEl && conStart()) : conStop();
+    styleEl.textContent =
+      (get('dev-borders') ? '#phone *{outline:1px solid rgba(255,69,58,.45)!important}' : '') +
+      (get('dev-noanim') ? '*,*::before,*::after{animation:none!important;transition:none!important}' : '');
+  };
+  const IDS = ['dev-touch','dev-fps','dev-borders','dev-noanim','dev-console','dev-mute'];
+  const initAll = () => IDS.forEach(apply);
+
+  const bind = () => {
+    IDS.forEach(id => { const el = document.getElementById(id); if (el) el.onchange = () => { st[id] = el.checked; save(); apply(id); }; });
+    document.getElementById('dev-edit').onclick = () => { closeApp(); setTimeout(enterEditMode, 400); };
+    document.getElementById('dev-reset').onclick = () => { if (confirm('Erase all WebOS data and reload?')) { localStorage.clear(); location.reload(); } };
+    document.getElementById('dev-info').textContent =
+      'Viewport: ' + innerWidth + 'x' + innerHeight + ' @' + devicePixelRatio + 'x\n' +
+      'Apps installed: ' + APPS.length + '\n' +
+      'Touch: ' + (navigator.maxTouchPoints > 0) + '\n' +
+      'UA: ' + navigator.userAgent;
+  };
+  return { get, bind, initAll, muted: () => get('dev-mute') };
+})();
+
+DevOpts.initAll();
+
+/* ==================== SLIDE TO UNLOCK ==================== */
+const lockscreen = document.getElementById('lockscreen');
+const wallpaper  = document.getElementById('wallpaper');
+const slider     = document.getElementById('slider');
+const handle     = document.getElementById('slider-handle');
+const sliderFill = document.getElementById('slider-fill');
+
+let dragging = false, startX = 0, maxX = 0, unlocked = false;
+const getMaxX = () => slider.clientWidth - handle.offsetWidth - 10;
+
+handle.addEventListener('pointerdown', e => {
+  if (unlocked) return;
+  dragging = true; startX = e.clientX; maxX = getMaxX();
+  handle.classList.add('dragging');
+  try { handle.setPointerCapture(e.pointerId); } catch(_){}
+});
+handle.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const x = Math.max(0, Math.min(maxX, e.clientX - startX));
+  handle.style.left = (5 + x) + 'px';
+  sliderFill.style.width = (5 + x + handle.offsetWidth) + 'px';
+  if (x >= maxX - 2) unlock();
+});
+const resetSlider = () => {
+  handle.classList.remove('dragging');
+  handle.style.left = '5px';
+  sliderFill.style.width = '0';
+};
+handle.addEventListener('pointerup', () => {
+  if (!dragging) return;
+  dragging = false; handle.classList.remove('dragging');
+  const left = parseFloat(handle.style.left) || 5;
+  if (left < maxX - 5 && !unlocked) resetSlider();
+});
+handle.addEventListener('pointercancel', () => { dragging = false; if (!unlocked) resetSlider(); });
+
+async function unlock() {
+  if (unlocked) return;
+  unlocked = true; dragging = false;
+  handle.classList.remove('dragging'); navigator.vibrate?.(15);
+  handle.style.left = (5 + maxX) + 'px'; sliderFill.style.width = '100%';
+  AudioEngine.swoosh();
+  setTimeout(async () => {
+    if (Pass.has()) {
+      const ok = await checkPass('Enter Passcode');
+      if (!ok) { unlocked = false; resetSlider(); return; }
+    }
+    lockscreen.classList.add('hidden');
+    document.getElementById('home').classList.remove('hidden');
+    document.getElementById('dock').classList.remove('hidden');
+    wallpaper.classList.remove('blur');
+    const b = localStorage.getItem('webos-bright');
+    if (b) wallpaper.style.filter = `brightness(${b}%)`;
+    resetSlider();
+  }, 200);
+}
+
+/* ==================== APP LAUNCHER ==================== */
+const appview = document.getElementById('appview');
+const appTitle = document.getElementById('app-title');
+const appContent = document.getElementById('app-content');
+let currentApp = null;
+
+function openApp(app) {
+  if (!app) return;
+  if (document.getElementById('home').classList.contains('edit-mode')) return;
+  Keyboard.hide();
+  currentApp = app;
+  appTitle.textContent = app.name;
+  appContent.innerHTML = typeof app.body === 'function' ? app.body() : app.body;
+  if (app.fullscreen) {
+    appContent.style.padding = '0';
+    appContent.style.overflow = 'hidden';
+  } else {
+    appContent.style.padding = '20px';
+    appContent.style.overflow = 'auto';
+  }
+  appview.style.bottom = '';
+  appview.classList.add('open');
+  navigator.vibrate?.(5);
+  AudioEngine.pop();
+  if (app.init) setTimeout(() => { try { app.init(); } catch(e) { console.error(e); } }, 0);
+}
+
+function closeApp() {
+  Keyboard.hide();
+  appview.classList.remove('open');
+  appview.style.bottom = '';
+  AudioEngine.click();
+  if (currentApp && currentApp.id === 'camera') {
+    const stopBtn = document.getElementById('cam-stop');
+    if (stopBtn && stopBtn.style.display !== 'none') stopBtn.click();
+  }
+  if (currentApp && currentApp.id === 'messages' && window.closeChatRoom) {
+    window.closeChatRoom();
+  }
+  currentApp = null;
+}
+document.getElementById('back').onclick = closeApp;
+
+window.openApp = openApp;
+window.closeApp = closeApp;
+window.renderHome = renderHome;
+window.renderDock = renderDock;
+Object.defineProperty(window, 'APPS', { get: () => APPS });
+
+/* ==================== SWIPE UP GESTURE ==================== */
+const indicator = document.getElementById('indicator');
+let indDragging = false, indStartY = 0;
+
+indicator.addEventListener('pointerdown', e => {
+  indDragging = true; indStartY = e.clientY;
+  indicator.style.cursor = 'grabbing';
+  e.stopPropagation();
+});
+indicator.addEventListener('pointermove', e => {
+  if (!indDragging) return;
+  const deltaY = e.clientY - indStartY;
+  if (deltaY < -20) {
+    indDragging = false; indicator.style.cursor = 'grab';
+    if (appview.classList.contains('open')) {
+      navigator.vibrate?.(10);
+      closeApp();
+    }
+  }
+});
+indicator.addEventListener('pointerup', () => { indDragging = false; indicator.style.cursor = 'grab'; });
+indicator.addEventListener('pointercancel', () => { indDragging = false; indicator.style.cursor = 'grab'; });
+
+/* ==================== CLOCK & WIDGET TICK ==================== */
+function tick() {
+  const d = new Date();
+  const t = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  const dt = d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+  document.getElementById('clock').textContent = t;
+  document.getElementById('lock-time').textContent = t;
+  document.getElementById('lock-date').textContent = d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+  if (document.getElementById('widget-time')) {
+    document.getElementById('widget-time').textContent = t;
+    document.getElementById('widget-date').textContent = dt;
+  }
+}
+tick(); setInterval(tick, 10000);
+
+/* ==================== RESIZE ==================== */
+window.addEventListener('resize', () => {
+  if (!unlocked) maxX = getMaxX();
+  if (!dragging && !unlocked) resetSlider();
+});
+</script>
+</body>
+</html>
